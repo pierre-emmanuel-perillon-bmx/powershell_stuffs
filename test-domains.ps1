@@ -5,7 +5,7 @@ $urls=@(
 )
 
 
-
+Clear-DnsClientCache
 
 function test-domains ( [string] $url, [string] $site ){
 
@@ -51,6 +51,15 @@ Process{
     else {
         write-host "$StatusCode  $StatusDescription "
     }
+    
+    if ( $Response -is [System.Net.HttpWebResponse] ){
+        $msg = $Response.GetResponseHeader('Served-By')
+        Write-Host -ForegroundColor Yellow "## served-by : $msg "    
+    }
+    #elseif ( $Response -is [Microsoft.PowerShell.Commands.WebResponseObject] ){
+    #    $msg = $Response.BaseResponse.GetResponseHeader('Server')
+    #    Write-Host -ForegroundColor Yellow "## served-by : $msg " 
+    #}
  }#process
 }#function
 
