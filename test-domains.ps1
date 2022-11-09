@@ -40,16 +40,17 @@ Process{
 
 
     if ( $StatusCode -eq -1 ){
-        Write-host "$StatusCode Can not connect on remote -> $StatusDescription"
+        Write-host  -ForegroundColor Red  "(a) $StatusCode Can not connect on remote -> $StatusDescription"
     }
     elseif ( $location -ne $site  ){
-        Write-host "$StatusCode  $StatusDescription => $location  "
+        Write-host  -ForegroundColor Yellow  "(b) $StatusCode  $StatusDescription => $location  "
     }
     elseif ( $StatusCode -ne 200 ){
-        Write-host "$StatusCode  $StatusDescription => $location "    
+        Write-host -ForegroundColor Yellow "(c) $StatusCode  $StatusDescription => $location "
+
     }
     else {
-        write-host "$StatusCode  $StatusDescription "
+        write-host "(d) $StatusCode  $StatusDescription "
     }
     
     if ( $Response -is [System.Net.HttpWebResponse] ){
