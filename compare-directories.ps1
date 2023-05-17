@@ -10,13 +10,12 @@ Compare-Object -ReferenceObject $fsoRef -DifferenceObject $fsoDif | ForEach-Obje
 
    $SideIndicator=if ( $_.SideIndicator  -eq "<=" ) { "missing" } else {"extra"}
    $InputObject =$_.InputObject
-   $Path = ($_.InputObject.fullname).replace("$src","#")
-   $attrib = $InputObject.Attributes 
-   $size=if ( $attrib -eq "Directory") { 0 } else { $InputObject.length } 
+   $Path = $_.InputObject.fullname.toString().replace("$src","#")
+   $size=if ( $InputObject.PSIsContainer ) { 0 } else { $InputObject.length } 
    $totalfile = $totalfile +1
    $totalsize = $totalsize + $size 
 
-   Write-Output "[$sideIndicator] $Path $attrib $size"
+   Write-Output "[$sideIndicator] $Path $size"
 }
 
 Write-output ""
