@@ -14,20 +14,7 @@ Param(
  )
 
 <#
-Param(
-    [parameter(Mandatory=$true)][ValidateSet('PROD','HPRD','METIER')][String]$environnement='PROD',
-    [parameter(Mandatory=$false)][string]$configFile = 'config_CLIFFS.txt',
-    [string] $caccia_user = '',
-    [switch] $no_password_store = $false,
-    [switch] $no_password_ask = $false,
-    [switch] $no_open_report = $false,
-    [switch] $no_abreviate = $false,
-    [switch] $extract_all = $false,
-    [switch] $reconciliate = $true,
-    [int]    $keep_reports_days = 31,
-    [switch] $trim_login = $true,
-    [string] $report_tag ='KYSS'
- )
+please create outputDirectory  in the filesystem !!!
  #>
 
 Set-strictmode -version Latest
@@ -41,9 +28,9 @@ Add-Member -InputObject $config -MemberType NoteProperty -Name site_PROD        
 Add-Member -InputObject $config -MemberType NoteProperty -Name site_HPRD          -Value 'hprod.kyss.local'
 Add-Member -InputObject $config -MemberType NoteProperty -Name site_HPME          -Value 'metier.hprod.kyss.local'
 Add-Member -InputObject $config -MemberType NoteProperty -Name network_try        -Value 16 
-Add-Member -InputObject $config -MemberType NoteProperty -Name project_url        -value "https://gitlab.adaje.oi.local/PP06612S/rt-cliffs/-/tree/master/PowerKyss"
+Add-Member -InputObject $config -MemberType NoteProperty -Name project_url        -value "https://.../-/tree/master/PowerKyss"
 Add-Member -InputObject $config -MemberType NoteProperty -Name outputReport       -Value "Rapport-[TAG]-[ENVI]-[DATETIME].html"
-Add-Member -InputObject $config -MemberType NoteProperty -Name outputDirectory    -Value "Rapports"
+Add-Member -InputObject $config -MemberType NoteProperty -Name outputDirectory    -Value "Rapports" 
 Add-Member -InputObject $config -MemberType NoteProperty -Name kyss_uiweb         -value "ui/vault/secrets/secret%2F[NNA]/show/[ENV]/[TEAMTREE]"
 Add-Member -InputObject $config -MemberType NoteProperty -Name kyss_login         -value "v1/auth/caccia_prod/login/[LOGIN]"
 Add-Member -InputObject $config -MemberType NoteProperty -Name kyss_kvlist        -value "v1/secret/[NNA]/metadata/[FULLTREE]?list=true"
