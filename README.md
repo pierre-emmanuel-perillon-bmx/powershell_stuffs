@@ -6,3 +6,6 @@ it is a basic tool to perform kind of curl request (powershell fashion) on a lis
 
 ## compare_directories.ps1
 it is basic script to check if 2 folders are in sync. maybe we should test what happend if files are not same size.
+
+## powerkyss.ps1
+allow user to interact with a vault to create a listing of saved credential. it comes with .readme & .bat to simplify its use.
