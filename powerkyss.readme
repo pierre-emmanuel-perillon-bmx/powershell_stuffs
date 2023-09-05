@@ -1,0 +1,119 @@
+manuel PowerKyss
+
+
+1/ Comment ça marche?
+ - Le script automatise l'extration sur une meme page des données dans Kyss.
+ 
+ 
+
+2/ Contenu
+le script est décomposés en plusieurs parties
+ - un fichier TXT optionel de configuration "config*.txt" éditable dans notepad 
+   ou excel.
+ - un fichier BAT lanceur (pour simplifier le passage des options au script 
+   powershell)
+ - un fichier PS1 ou script powershell qui contient toute la logique
+   applicative.
+ - un fichier contenant le présent manuel
+
+apres execution vous verrez apparaitres des fichiers de données
+ - les fichiers rapports au format HTML dans le dossier dédié
+ - si non explicitement interdit, le stockage sécurisé du mot de passe caccia
+   par un secret géré par la session bureautique de l'utilisateur (cad non 
+   utilisable en dehors du contexte de cette session)
+
+3/ Configuration  
+Le fichier de configuration contient un fichier d'une seule colonne avec les 
+chemins à récuperer dans kyss, un seul chemin par colonne.
+
+
+4/ Execution
+Vous utiliserez probablement les lanceurs ".bat" pour simplifier l'appel du script 
+principal en powershell avec l'ensemble de ses options de lancement. Si nom du 
+lanceur est libre, vous verrez qu'un modèle de nomage est suggéré.
+
+
+4.1 parametres obligatoires à donner au script powershell
+-environnement <chaine>
+   PROD: environnement Kyss de production dispo depuis la ZSA
+   HPRD: environnement Kyss de hors-production dispo depuis la ZSA
+   METIER: environnement Kyss de hors-production dispo depuis le RIN
+-configFile <chaine> 
+   avec le nom relatif du fichier de configuration (par rapport au script powershell ). 
+   Ce fichier doit exister. ce parametre est ignoré si le switch -extract_all 
+
+
+4.2 parametres facultatifs à donner au script powershell
+-keep_reports_days <entier> 
+   permet de regler l'age en jour d'un rapport avant la purge automatique (0 pour 
+   désactiver la purge) des rapports.
+-caccia_user <chaine> 
+   permet de choisir de forcer le login sesame et ainsi contourner la détection 
+   automatique du NNI dans la session bureautique dans PC non énédis. (pour un poste
+   enédis login windows = nni = sesame )
+-report_tag <chaine>
+   permet de donner un ou plusieurs mots "libres" qui seront repris dans les nom de 
+   rapport générés afin de retrouver facilement le rapport si vous avez de lanceurs 
+   pour plusieurs portefeuille. Les caractères non alphanumériques (hormis " " et "_")
+   ne seront pas conservés afin d'éviter des surprises lors de la création du fichier.
+   Le tag aura une longeure maximale de 48 caractères.
+-no_password_store
+   permet d'interdire au script de consulter ou d'enregistrer le mot de passe dans 
+  le fichier chiffré
+-no_password_ask 
+   permet d'interdire le mode interactif (cad le script qui demande la saisie du mot
+   de passe) recommandé en cas d'usage dans une tache planifiée. Cette option sous entend
+   que le mot de passe est déjà stocké dans un fichier au format "<NNI>.sesame.secret" qui
+   contient ce mot de passe chiffré (secure-string).
+-no_abreviate
+   ne pas abreger les hash de mots de passe.
+-no_open_report
+   interdit l'ouverture automatique du rapport.
+-reconciliate
+	Active l'utilisation des fichiers de reconciliations d'environnement pour 
+	générer une clé de réconciliation (possiblement) invariable en fonction de 
+	l'environnement. désactivé par défaut. 
+    Les fichiers de réconciliations traitent les chemins/login via des expressions
+    régulieres pour faire une clé identique pour tous les environnements.
+-trim_login
+	désactivé par défaut, applique un trim sur les mots de passe. utile pour les 
+	applications dont les mots de passe sont injectés manuellement dans kyss.
+
+Utilisées ensemble les options -no_password_store et -no_password_ask ne permettent pas au 
+traitement de s'executer. 
+
+
+4.3 déroulement de l'execution
+Le script a été développé sur une cible powershell 5.1 .
+ - Le script determine le compte caccia à utiliser (automatiquement ou via l'option -caccia_user )
+ - Le script recupère le mot de passe caccia à utiliser (interactivement ou via le mot de passe 
+   stocké). En cas d'utilisation du mot de passe stocké, la premiere fois sera interactive 
+   pour initialiser le stockage. 
+   !!! Si le mot de passe caccia utilisé est erroné ou obsolète, vous incrementez votre 
+   compteur d'identification erronée sur l'annuaire caccia. En cas d'authentifications 
+   ratées trop nombreuses, vous pouvez bloquer votre compte. En mesure de prévention, 
+   un mot de passe stocké erroné sera rendu inutilisable (renommé). 
+ - le script confirme la dispo du portail indus via un ping (pour palier aux scripts qui
+   s'execute lorsque le réseau n'est pas dispo, zsa non dispo ... )
+ - le script se connecte sur Kyss et génère un nouveau token d'authentification
+ - Enfin le script gère le mot de passe stocké en fonction de son succès (sauf si -no_password_store).
+ - Le script détermine les chemins à récuperer (en automatique ou via le fichier de config)
+ - Le script recupère les mots de passes dans les conteneurs KV (clés valeurs) de Kyss.
+   les autres formats de secrets ne sont pas supportés.
+ - Le script génère le/les rapports puis ouvre le rapport (sauf si -no_open_report est utilisé)
+
+Vous pouvez executer plusieurs instances du script à tout moment, attention à repecter un fair-use 
+sur le portail indus au vu de la volumétrie de certaines sources (sauvegarde notement).
+
+5.Que faire si ??
+ - vous changez de mot de passe caccia : vous effacez le fichier *.caccia.secret et 
+   vous relancez le script interactivement.
+ - le rapport ne se créent pas : vous avez problablement une erreur à l'execution. 
+   consultez l'output shell du job.
+ - vous voulez créer un fichier de configuration pour une autre galaxie/portefeuille
+    * dupliquez/renommez le config_CLIFFS.txt
+    * éditez son contenu pour remplacer les chemins par ceux votre portefeuille
+    * dupliquez/renommez les lanceurs en ".bat" pour ajuster le nom du fichier de configuration.
+    * si vous souhaitez sauvegarder les fichiers sur adage, contactez l'auteur si 
+      vous avez besoin d'aide.
+
