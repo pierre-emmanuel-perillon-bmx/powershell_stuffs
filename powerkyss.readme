@@ -50,7 +50,7 @@ lanceur est libre, vous verrez qu'un modèle de nomage est suggéré.
 -caccia_user <chaine> 
    permet de choisir de forcer le login sesame et ainsi contourner la détection 
    automatique du NNI dans la session bureautique dans PC non énédis. (pour un poste
-   enédis login windows = nni = sesame )
+    login windows = nni = sesame )
 -report_tag <chaine>
    permet de donner un ou plusieurs mots "libres" qui seront repris dans les nom de 
    rapport générés afin de retrouver facilement le rapport si vous avez de lanceurs 
@@ -102,18 +102,10 @@ Le script a été développé sur une cible powershell 5.1 .
    les autres formats de secrets ne sont pas supportés.
  - Le script génère le/les rapports puis ouvre le rapport (sauf si -no_open_report est utilisé)
 
-Vous pouvez executer plusieurs instances du script à tout moment, attention à repecter un fair-use 
-sur le portail indus au vu de la volumétrie de certaines sources (sauvegarde notement).
 
 5.Que faire si ??
  - vous changez de mot de passe caccia : vous effacez le fichier *.caccia.secret et 
    vous relancez le script interactivement.
  - le rapport ne se créent pas : vous avez problablement une erreur à l'execution. 
    consultez l'output shell du job.
- - vous voulez créer un fichier de configuration pour une autre galaxie/portefeuille
-    * dupliquez/renommez le config_CLIFFS.txt
-    * éditez son contenu pour remplacer les chemins par ceux votre portefeuille
-    * dupliquez/renommez les lanceurs en ".bat" pour ajuster le nom du fichier de configuration.
-    * si vous souhaitez sauvegarder les fichiers sur adage, contactez l'auteur si 
-      vous avez besoin d'aide.
-
+ - 
