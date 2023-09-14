@@ -15,9 +15,9 @@ https://learn.microsoft.com/en-us/dotnet/api/system.net.mail.smtpclient.enabless
 #>
 
 $smtp =  @{
-    'username' = "noreply@biomerieux.com"
+    'username' = "***"
     'password' = ""
-    'server' = 'smtp.biomerieux.net' 
+    'server' = '***' 
     'port'   = 587  
 }
 
@@ -55,7 +55,6 @@ function Send-ToEmail([Net.Mail.MailMessage] $message){
     $client.EnableSSL = $smtp.port -eq 587  #25 or 587 are supported
     $client.Credentials = New-Object System.Net.NetworkCredential($smtp.username, $smtp.password );
     $client.send($message);
-    $client
     Write-Output "Mail Sent" ;
  }
 
