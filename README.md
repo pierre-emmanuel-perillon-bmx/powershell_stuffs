@@ -18,4 +18,6 @@ allow someone to generate CSV from database connection.
 - customise file query_list_all_tables.sql to select only interesting tables, it may work with views but not tested.
 - if target csv file already exists it may remove it or drop it (with -sign option)
 - customize $INI_OUTPUT_INZIP if you want CSV files to be put in zip file.
+
 Script may not be suited for larges tables are everything is put in memory.
+
