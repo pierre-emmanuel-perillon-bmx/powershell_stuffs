@@ -11,7 +11,7 @@ it is basic script to check if 2 folders are in sync. maybe we should test what 
 allow user to interact with a vault to create a listing of saved credential. it comes with .readme & .bat to simplify its use.
 
 
-##extractor_mssql
+## extractor_mssql
 allow someone to generate CSV from database connection.
 - verify output folder exists CSV will be generated here.
 - customise config.xml
