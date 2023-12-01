@@ -2,8 +2,9 @@ param(
     [switch] $dont_dump_base, #allow to not perform the main dump if set
     [switch] $dont_archive,   #files will be deleted if set
     [switch] $do_all,         #not used
-    [switch] $sign            #signature file will be generated at the end of the process
+    [switch] $dont_sign       #signature file will be generated at the end of the process
 )
+
 
 $INI_ROOT = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
 $INI_DB_CONFIG_FILE        ='config.xml'
@@ -18,7 +19,7 @@ $INI_COMPRESSION_LEVEL     ='Fastest'  # Fastest vs Optimal
 $INI_WAIT_SECOND           =2          # wait enough to let server breath
 $INI_TIMESTAMP_FORMAT      ='yyyyMMddHHmmss'
 
-$INI_QUERY_RELEVANT_TABLES ='query_list_all_tables.sql'
+$INI_QUERY_RELEVANT_TABLES ='query_ipmanager_some_tables.sql'
 $INI_QUERY_SELECT          ='query_select_start_cast.sql'
 $INI_QUERY_TABLESIZE       ='query_about_tablesize.sql'
 
@@ -26,7 +27,7 @@ $RUNTIME_CHOICE=@{
     '_archive'              =!$dont_archive
     '_default'              =$do_all 
     '_dump'                 =!$dont_dump_base
-    '_signature'            =$sign 
+    '_signature'            =!$dont_sign 
     'About table size'      =$true
 }
 
@@ -171,8 +172,6 @@ function perform-onequery-report([System.Data.SqlClient.SqlConnection]$SqlConnec
     Write-Output "   ->$path"
     try {
         execute-sqlselectquery1 $SqlConnection $sql $param $path 
-#       $all_results = execute-sqlselectquery2 $SqlCmd $sql $param 
-#       export $all_results $path 
     }catch {
         $Error = $_.Exception.Message
         Write-Error $Error
@@ -181,16 +180,9 @@ function perform-onequery-report([System.Data.SqlClient.SqlConnection]$SqlConnec
 
 
 function dump_database([System.Data.SqlClient.SqlConnection]$SqlConnection, $sql_script,[string] $zipname = '' ) {
-<#
     $SqlCmd = New-Object System.Data.SqlClient.SqlCommand
     $SqlCmd.Connection = $SqlConnection
 
-    $SqlCmd.CommandText = 'SET ANSI_NULLS ON'
-    $SqlCmd.ExecuteNonQuery() | out-null 
-
-    $SqlCmd.CommandText = 'SET QUOTED_IDENTIFIER ON'
-    $SqlCmd.ExecuteNonQuery() | out-null 
-#>
     $sql = read-file $sql_script
     $sqlTemplate = read-file $INI_QUERY_SELECT
 
