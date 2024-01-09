@@ -11,7 +11,7 @@ $INI_LIST = (
 
 $TARGET_PATH = 'C:\Users\user\Desktop\directory'
 $SOURCE_PATH = $RUNTIME_ROOT
-import-module "$RUNTIME_ROOT\Class_ScriptUser.psm1" -Force
+import-module "$RUNTIME_ROOT\Classes\Class_ScriptUser.psm1" -Force
 
 
 function copy-files-toremote( [array]$list_files, [string]$read_dir, [string]$write_dir, [System.Management.Automation.Runspaces.PSSession] $remote  ) {
@@ -56,7 +56,7 @@ function copy-files-toLocal( [array]$list_files, [string]$read_dir, [string]$wri
 
 
 
-$user = New-Object ScriptUser ( $INI_USERNAME, $true, $true, $RUNTIME_ROOT )
+$user = New-Object ScriptUser ( $INI_USERNAME, $RUNTIME_ROOT, $true, $true )
 $cred = $user.getCredential()
 $remote = New-PSSession -ComputerName $INI_WRITE_COMPUTER -Credential $cred  # -UseSSL
 if ( $remote.State -eq 'Opened' ) {
