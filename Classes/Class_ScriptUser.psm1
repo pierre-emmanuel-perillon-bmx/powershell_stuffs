@@ -1,6 +1,7 @@
 
 $script:INI_PASSWORD_DISK_EXT = '.secret'
 $script:INI_INVALIDPWD_DISK_EXT = '.invalid-secret'
+$script:INI_RENAME_INVALID_STORE = $true 
 
 function script:Checkpoint-columnname( [Parameter(ValueFromPipeline = $true)][string] $c ){
     Begin{
@@ -128,9 +129,14 @@ Class ScriptUser{
             }else {
                 #enfin on dégomme le mot de passe stocké s'il n'a pas marché.
                 if (-not ($this.passwordAsked) -and (Test-Path $this.password_store) ){
-                    $tmp = Get-Item $this.password_store 
-                    $tgt = [IO.Path]::Combine( $tmp.DirectoryName, $tmp.BaseName, $script:INI_INVALIDPWD_DISK_EXT )
-                    Move-Item -Path $this.password_store -Destination $tgt -Verbose
+                    if ( $script:INI_RENAME_INVALID_STORE) {
+                        $tmp = Get-Item $this.password_store 
+                        $tgt = [IO.Path]::Combine( $tmp.DirectoryName, $tmp.BaseName, $script:INI_INVALIDPWD_DISK_EXT )
+                        Move-Item -Path $this.password_store -Destination $tgt -Verbose    
+                    }
+                    else{
+                        Remove-Item -Path $this.password_store -Verbose
+                    }
                 }
             }
         }#if do_pass_store
