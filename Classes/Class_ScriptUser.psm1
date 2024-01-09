@@ -1,4 +1,3 @@
-
 $script:INI_PASSWORD_DISK_EXT = '.secret'
 $script:INI_INVALIDPWD_DISK_EXT = '.invalid-secret'
 $script:INI_RENAME_INVALID_STORE = $true 
@@ -12,204 +11,361 @@ function script:Checkpoint-columnname( [Parameter(ValueFromPipeline = $true)][st
     }
 }
 
+Class UsersHabilitation {
+    [string[]]$employeeIDs
+    [Microsoft.ActiveDirectory.Management.ADAccount[]] $identities
+    [System.Data.SqlClient.SqlConnection]$SqlConnection
+
+    UsersHabilitation ([System.Data.SqlClient.SqlConnection]$SqlConnection, [Microsoft.ActiveDirectory.Management.ADAccount[]] $accounts  ) {
+        $this.identities=$accounts 
+        $this.employeeIDs=$accounts | Select-Object -ExpandProperty employeeid 
+        $this.SqlConnection = $SqlConnection
+    }
+
+<#
+    UsersHabilitation ([System.Data.SqlClient.SqlConnection]$SqlConnection, [string[]]$employeeIDs ) {
+        $this.employeeIDs = $employeeIDs
+        $this.identities = @()
+        $this.SqlConnection = $SqlConnection
+    }
+#>
+
+    hidden [void] initquery_CCM([System.Data.SqlClient.SqlCommand]$SqlCmd_I) {
+        $sql_insert = @'
+INSERT INTO [e2sMaster].[dbo].[ccm_user] ([fk_user],[fk_ccm],[fk_role],[email_send])
+VALUES ( (SELECT [pk_user] FROM [e2sMaster].[dbo].[user] WHERE login=@login) , @ccm_id, (SELECT r.[pk_ccm_role]  FROM [e2sMaster].[dbo].[ccm_role] r where r.role=@rolename ), @email)
+'@
+        $SqlCmd_I.Connection = $this.SqlConnection    
+        $SqlCmd_I.Parameters.Add('@login',    [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_I.Parameters.Add('@ccm_id',   [Data.SQLDBType]::BigInt )       | Out-Null
+        $SqlCmd_I.Parameters.Add('@rolename', [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_I.Parameters.Add('@email',    [Data.SQLDBType]::Bit)           | Out-Null
+        $SqlCmd_I.CommandText = $sql_insert 
+        $SqlCmd_I.Prepare()
+    }
 
 
-Class ScriptUser{
-    [string] $username 
-    [securestring] $secure_password
-    hidden [boolean] $passwordValid    #was chalenge against infrastructure
-    hidden [boolean] $passwordAsked    #was provided by user
-    hidden [boolean] $passwordInited   #was successfully provided to the object, password not challenged
-    [boolean] $do_store_password
-    [boolean] $do_ask_password 
-    [string]  $password_store 
-    static [string] $store_extention = $script:INI_PASSWORD_DISK_EXT
+    hidden [void] initquery_usersprofiles( [System.Data.SqlClient.SqlCommand]$SqlCmd_U) {
+        $sql_update = @'
+UPDATE [e2sMaster].[dbo].[user] 
+SET [fk_profile]=(SELECT [pk_profile] FROM [e2sMaster].[dbo].[profile] WHERE [code]=@profil_code)
+WHERE login=@login
+'@  
+        $SqlCmd_U.Connection = $this.SqlConnection
+        $SqlCmd_U.Parameters.Add('@login',       [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_U.Parameters.Add('@profil_code', [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_U.CommandText = $sql_update
+        $SqlCmd_U.Prepare()   
+    }
 
+    hidden [void] initquery_usersroles( [System.Data.SqlClient.SqlCommand]$SqlCmd_I, [System.Data.SqlClient.SqlCommand] $SqlCmd_D) {
+        #initialize
+        $sql_insert = @'
+INSERT INTO [e2sMaster].[dbo].[user_role] ([fk_user],[fk_role])
+VALUES ( (SELECT [pk_user] FROM [e2sMaster].[dbo].[user] WHERE login=@login), (SELECT r.[pk_role]  FROM [e2sMaster].[ref].[role] r where r.[name]=@rolename))
+'@      
+        $SqlCmd_I.Connection = $this.SqlConnection
+        $SqlCmd_I.Parameters.Add('@login',    [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_I.Parameters.Add('@rolename', [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_I.CommandText = $sql_insert 
+        $SqlCmd_I.Prepare()
+
+        $sql_delete = @'
+DELETE [e2sMaster].[dbo].[user_role] 
+FROM [e2sMaster].[dbo].[user_role] ur inner join [e2sMaster].[dbo].[user] u on u.[pk_user]=ur.[fk_user]
+WHERE u.[login]=@login 
+'@
+        $SqlCmd_D.Connection = $this.SqlConnection
+        $SqlCmd_D.Parameters.Add('@login', [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_D.CommandText = $sql_delete
+        $SqlCmd_D.Prepare()
+
+    }
+
+    hidden [void] initquery_createUsers ( [System.Data.SqlClient.SqlCommand]$SqlCmd_I, [System.Data.SqlClient.SqlCommand]$SqlCmd_U) {
+        $update = @'
+UPDATE [e2sMaster].[dbo].[user] set is_active = 1 where login = @login
+'@
+        $SqlCmd_U.Connection = $this.SqlConnection
+        $SqlCmd_U.Parameters.Add('@login', [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_U.CommandText = $update 
+        $SqlCmd_U.Prepare()
     
-    ScriptUser ([string]$username, [string]$working_directory, [boolean]$store_password, [boolean]$ask_password) {
-        $this.username =$username
-        $this.do_ask_password =   $ask_password
-        $this.do_store_password = $store_password
-        $this.password_store = [System.IO.Path]::Combine( $working_directory , $username + [ScriptUser]::store_extention ) 
-        $this.passwordValid = $false  
-        $this.passwordAsked = $false
-        $this.passwordInited= $false 
-    } #constructor 
+        $insert = @'
+INSERT INTO [e2sMaster].[dbo].[user] ([login],[fk_profile],[last_name],[first_name],[email],[date_creation],[is_active],[fk_language])
+VALUES (@login,(SELECT pk_profile FROM [e2sMaster].[dbo].[profile] WHERE code=@profilCode),@lastname,@firstname,@email,GETDATE(),1,'EN')
+'@
+        $SqlCmd_I.Connection = $this.SqlConnection
+        $SqlCmd_I.Parameters.Add('@login',      [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_I.Parameters.Add('@lastname',   [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_I.Parameters.Add('@firstname',  [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_I.Parameters.Add('@email',      [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_I.Parameters.Add('@profilCode', [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_I.CommandText = $insert 
+        $SqlCmd_I.Prepare()
 
-
-    <#
-    allow for lazy init of password.
-    #>
-    hidden [void] initPassword() {
-        if ( $this.passwordInited ){
-            return 
-        }
-        # main purpose is to use the store
-        $this.readPasswordStore() 
-
-        #fallback method is to prompt.
-        if ( $this.passwordInited  ){
-            Write-Host "using store's password"
-        }
-        else {
-            $this.promptPassword() 
-        }
-
-        #if it wasn't successfull,let's cry
-        if ( -not( $this.passwordInited )){
-            Write-Warning "No valid password found"
-            throw "No password available"
-        }
     }
 
+    #=====================
+    [void] grant_CCMs( [int[]]$ccm_IDs , [string]$ccm_rolename, [int]$with_email , [boolean] $deleteFirstByUser, [boolean]$deleteFirstByCCM ) {
+        #reduce risk of error
+        $r = invoke-sqloneline $this.SqlConnection ( new-sqlQueryOptions'select count(*) from [e2sMaster].[dbo].[ccm_role] where role=@rolename ' @{'rolename' = $ccm_rolename } )
+        if ( $r -ne 1 ) {
+            throw "Can not find rolename $ccm_rolename"
+        }
 
-    [void] promptPassword(){ 
-        if ( $this.do_ask_password ){
-            $text="Please enter password for user "+$this.username 
-            try{
-                $this.secure_password = Read-Host -assecurestring   $text
-                $this.secure_password.MakeReadOnly()
-                $this.passwordInited = $true 
-                $this.passwordAsked = $true 
-            }catch {
-                $myError = $_.Exception.Message
-                 Write-Warning  "can not use stored password"
-                 Write-Error $myError 
+        $sql_select_ByCCM =  'SELECT count(*) FROM [e2sMaster].[dbo].[ccm] WHERE [pk_ccm]=@ccm '
+        $sql_delete_ByUser = 'DELETE [e2sMaster].[dbo].[ccm_user] FROM [e2sMaster].[dbo].[ccm_user] cr inner join [e2sMaster].[dbo].[user] u on u.[pk_user]=cr.fk_user WHERE cr.[login]=@login'
+        $sql_delete_ByCCM =  'DELETE [e2sMaster].[dbo].[ccm_user] FROM [e2sMaster].[dbo].[ccm_user] WHERE [fk_ccm]=@ccm_id'
+
+        $SqlCmd_I = New-Object -TypeName System.Data.SqlClient.SqlCommand
+        $this.initquery_CCM($SqlCmd_I)
+        $SqlCmd_I.Parameters['@rolename'].Value = $ccm_rolename 
+        $SqlCmd_I.Parameters['@email'].Value = $with_email 
+
+        $opt_select = new-sqlQueryOptions $sql_select_ByCCM
+        $opt_delete = new-sqlQueryOptions $sql_delete_ByCCM
+        $opt_delete_byUser = new-sqlQueryOptions $sql_delete_ByUser
+        foreach ( $ccm in $ccm_IDs) {
+            $opt_select.param = @{'ccm' = $ccm }
+            $r = invoke-sqloneline $this.SqlConnection $opt_select
+            if ( $r -ne 1 ) {
+                Write-Output "skipping CCM ID $ccm that does not exists "
+                continue
             }
-        }
+            if ( $deleteFirstByCCM ) {
+                $opt_delete.param = @{'ccm' = $ccm }
+                $r = invoke-sqloneline $this.SqlConnection $opt_delete
+                Write-Output "deleted $r rows for CCM ID $ccm "
+            }
+
+            $SqlCmd_I.Parameters['@ccm_id'].Value = $ccm 
+            foreach ( $login in $this.employeeIDs ) {
+                $SqlCmd_I.Parameters['@login'].Value = $login
+                if ( $deleteFirstByUser ) {
+                    $opt_delete_byUser.param = @{'login' = $login }
+                    $r = invoke-sqloneline $this.SqlConnection $opt_delete_byUser
+                    Write-Output "remove $r records for user $login"
+                }
+                try {
+                    $res = $SqlCmd_I.ExecuteNonQuery()
+                    if ( $res -eq 1 ) {
+                        Write-Output "success: login $login + ccm $ccm + role $ccm_rolename + email $with_email"
+                    }
+                    else {
+                        Write-warning "failed: login $login + ccm $ccm + role $ccm_rolename + email $with_email"
+                    }
+                }
+                catch {
+                    $ExceptionMsg = $_.Exception.InnerException
+                    Write-Debug $ExceptionMsg
+                    Write-Warning "error: login $login + ccm $ccm + role $ccm_rolename + email $with_email"
+                }
+            }#foreach
+        }#foreach
+
+        $SqlCmd_I.Dispose()
+    }
+    
+
+    #=====================
+    [void] grant_users_roles( [string[]]$app_rolenames , [boolean] $deleteFirst ) {
+        #reduce risk of error
+        $opt = new-sqlQueryOptions 'select count(*) cnt from [e2sMaster].[ref].[role] r where r.name=@rolename ' 
+        Foreach ( $rolename in $app_rolenames ) {
+            $opt.param = @{'rolename' = $rolename }
+            $r = invoke-sqloneline $this.SqlConnection $opt 
+            if ( $r.cnt -ne 1 ) {
+                throw "Can not find rolename $rolename"
+            }
+        }#foreach
+
+        $SqlCmd_I = New-Object -TypeName System.Data.SqlClient.SqlCommand
+        $SqlCmd_D = New-Object -TypeName System.Data.SqlClient.SqlCommand
+        $this.initquery_usersroles($SqlCmd_I, $SqlCmd_D)
+
+        foreach ( $login in $this.employeeIDs ) {
+            if ( $deleteFirst ) {
+                $SqlCmd_D.Parameters['@login'].Value = $login
+                $res = $SqlCmd_D.ExecuteNonQuery()
+                Write-Output "Users roles: removed $res roles"
+            }
+            Foreach ( $rolename in $app_rolenames ) { 
+                $SqlCmd_I.Parameters['@login'].Value = $login
+                $SqlCmd_I.Parameters['@rolename'].Value = $rolename 
+
+                try {
+                    $res = $SqlCmd_I.ExecuteNonQuery()
+                    Write-Output "success: login $login + role $rolename "
+                }
+                catch {
+                    $ExceptionMsg = $_.Exception.InnerException
+                    Write-Debug $ExceptionMsg
+                    Write-Warning "error: login $login + role $rolename "
+                }
+<#
+dead code.
+        $sql_update = @'
+UPDATE [e2sMaster].[dbo].[user_role] 
+SET [fk_user]=(SELECT [pk_user] FROM [e2sMaster].[dbo].[user] WHERE [login]=@login)
+,[fk_role]=(SELECT [pk_role]  FROM [e2sMaster].[ref].[role] where [name]=@rolename)
+'@
+        $SqlCmd_U.Connection = $this.SqlConnection
+        $SqlCmd_U.Parameters.Add('@login',    [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_U.Parameters.Add('@rolename', [Data.SQLDBType]::NVarChar, 100) | Out-Null
+        $SqlCmd_U.CommandText = $sql_update
+        $SqlCmd_U.Prepare()
+
+
+                $SqlCmd_U.Parameters['@login'].Value = $login
+                $SqlCmd_U.Parameters['@rolename'].Value = $rolename 
+                try {
+                    $res = $SqlCmd_U.ExecuteNonQuery()
+                    if ( $res -gt 0 ) {
+                        Write-Output "success: login $login + role $rolename"
+                    }
+                }
+                catch {
+                    $ExceptionMsg = $_.Exception.InnerException
+                    Write-Debug $ExceptionMsg
+                    Write-Warning "error: login $login + role $rolename "
+                }
+#>
+            }#foreach
+        }#foreach
+        $SqlCmd_I.Dispose()
+        $SqlCmd_D.Dispose()
     }
 
+    #=====================
+    [void] grant_users_profile( [string]$ProfileCode ) {
+        #reduce risk of error
+        $opt = new-sqlQueryOptions 'SELECT count(*) cnt FROM [e2sMaster].[dbo].[profile] WHERE code =@profilCode' @{'profilCode' = $ProfileCode }
+        $tmp = invoke-sqloneline $this.SqlConnection $opt
+        if ( $tmp.cnt -eq 0 ) {
+            throw "Can not find ProfilID $ProfileCode"
+        }
+    
+        $SqlCmd_U = New-Object -TypeName System.Data.SqlClient.SqlCommand
+        $this.initquery_usersprofiles($SqlCmd_U)
+        $SqlCmd_U.Parameters['@profil_code'].Value = $ProfileCode 
 
-    [void] readPasswordStore(){
-        if ((test-path $this.password_store ) -and $this.do_store_password ){
+        foreach ( $login in $this.employeeIDs ) {
+            $SqlCmd_U.Parameters['@login'].Value = $login
             try {
-                $this.secure_password = Get-Content $this.password_store | ConvertTo-SecureString 
-                $this.secure_password.MakeReadOnly()
-                $this.passwordInited = $true
+                $res = $SqlCmd_U.ExecuteNonQuery()
+                if ( $res -gt 0 ) {
+                    Write-Output "success: login $login + profilCode $ProfileCode"
+                }
             }
             catch {
-                $myError = $_.Exception.Message
-                Write-Warning  "can not use stored password"
-                Write-Error $myError 
+                $ExceptionMsg = $_.Exception.InnerException
+                Write-Debug $ExceptionMsg
+                Write-Warning "error: login $login + profilCode $ProfileCode "
             }
+        }#foreach
+
+        $SqlCmd_U.Dispose()
+
+    }
+
+
+    #=====================
+    [void] sync_user_disable_all(  [string]$exception_user ) {
+        $SqlCmd = New-Object -TypeName System.Data.SqlClient.SqlCommand
+        $SqlCmd.Connection = $this.SqlConnection
+        $opt = new-sqlQueryOptions  'UPDATE [e2sMaster].[dbo].[user] set is_active = 0 where login <> @login and is_active = 1' @{'login' = $exception_user }
+        $res = invoke-sqlselectquery5 $SqlCmd $opt
+        Write-Output "$res active users have been disablesd"
+        $SqlCmd.Dispose()
+    }
+
+    #=====================
+    [void] add_users( [string] $defaultProfilCode ) { 
+        if ( $this.identities.Count -eq 0 ) {
+            throw 'identities were not provided'
+        }
+        $opt = new-sqlQueryOptions 'SELECT count(*) cnt FROM [e2sMaster].[dbo].[profile] WHERE code =@profilCode' @{'profilCode' = $defaultProfilCode }
+        $tmp = invoke-sqloneline $this.SqlConnection $opt
+        if ( $tmp.cnt -eq 0 ) {
+            throw "Can not find ProfilID $defaultProfilCode"
         }
 
-    }
+        $SqlCmd_U = New-Object -TypeName System.Data.SqlClient.SqlCommand
+        $SqlCmd_I = New-Object -TypeName System.Data.SqlClient.SqlCommand
+        $this.initquery_createUsers($SqlCmd_I, $SqlCmd_U)
 
+        foreach ( $identity in $this.identities) {
+            Write-Output  "working on $($identity.employeeID)"   
+            $SqlCmd_U.Parameters[0].Value = $identity.employeeID 
+            $res = $SqlCmd_U.ExecuteNonQuery()
+            if ( $res -eq 0 ) {
+                $SqlCmd_I.Parameters['@login'].Value = $identity.employeeID
+                $SqlCmd_I.Parameters['@lastname'].Value = $identity.surname
+                $SqlCmd_I.Parameters['@firstname'].Value = $identity.givenname
+                $SqlCmd_I.Parameters['@email'].Value = $identity.mail
+                $SqlCmd_I.Parameters['@profilCode'].Value = $defaultProfilCode 
+                $res = $SqlCmd_I.ExecuteNonQuery()
+                Write-Output "added $($identity.employeeID)  ($res)"
 
-    [securestring] getPassword(){
-        $this.initPassword()
-        return $this.secure_password
-    }
-
-
-    [string] getPasswordClearText(){
-        Write-Warning 'using cleartext password :( '
-        $this.initPassword()
-        return [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($this.secure_password))
-    }
-
-
-    [Object] getCredential(){
-        $this.initPassword()
-        $cred = New-Object System.Management.Automation.PSCredential ($this.username, $this.secure_password ) 
-        return $cred        
-    }
-
-    
-    [void] updateStore(){
-        if ($this.do_store_password ){
-            if ( $this.passwordValid ){
-                if ( $this.passwordAsked ){
-                    $this.secure_password | ConvertFrom-SecureString | Out-File $this.password_store
-                        Write-Verbose "new password saved"
-                } else {
-                        Write-Verbose "nothing to do"
-                }
-            }else {
-                #enfin on dégomme le mot de passe stocké s'il n'a pas marché.
-                if (-not ($this.passwordAsked) -and (Test-Path $this.password_store) ){
-                    if ( $script:INI_RENAME_INVALID_STORE) {
-                        $tmp = Get-Item $this.password_store 
-                        $tgt = [IO.Path]::Combine( $tmp.DirectoryName, $tmp.BaseName, $script:INI_INVALIDPWD_DISK_EXT )
-                        Move-Item -Path $this.password_store -Destination $tgt -Verbose    
-                    }
-                    else{
-                        Remove-Item -Path $this.password_store -Verbose
-                    }
-                }
             }
-        }#if do_pass_store
+            else {
+                Write-Output "$res active"
+            }
+        }#foreach
+        $SqlCmd_U.Dispose()
+        $SqlCmd_I.Dispose()
     }
 
-    
-    [void] Dispose(){
-        $this.updateStore()
-    }
 
 
-    [void] confirmPassword(){
-        if ( $this.passwordInited ){
-            $this.passwordValid = $true 
-        }
-        else {
-            Write-Warning 'password was never provided nor read from store'
-            throw exception 'Shall not confirm inited password'
-        }
-    }
+} # class 
 
-    [void] denyPassword(){
-        if ( $this.passwordInited ){
-            $this.passwordValid = $false 
-        }
-        else {
-            Write-Warning 'password was never provided nor read from store'
-            throw exception 'Shall not confirm inited password'
-        }
-    } 
 
-} #class
-
-function new-ScriptUser([string]$username, [boolean]$store_password,[boolean]$ask_password, [string]$working_directory){
-    return [ScriptUser]::new($username, $store_password, $ask_password, $working_directory)
+Function new-UsersHabilitation( [System.Data.SqlClient.SqlConnection]$SqlConnection, [Microsoft.ActiveDirectory.Management.ADAccount[]] $identities ){
+    return [UsersHabilitation]::new( $SqlConnection,  $identities  )
 }
 
-function get-ScriptUser_Credential([ScriptUser]$su){
-    return $su.getCredential()
+Function grant-UsersHabilitation_CCMs([usersHabilitations] $uh, [int[]]$ccm_IDs , [string]$ccm_rolename, [int]$with_email , [boolean] $deleteFirstByUser, [boolean]$deleteFirstByCCM ){
+    return $uh.grant_CCMs($ccm_IDs, $ccm_rolename, $with_email , $deleteFirstByUser, $deleteFirstByCCM )
 }
 
-function confirm-ScriptUser_Password([ScriptUser]$su){
-    return $su.confirmPassword()
+
+Function grant-UsersHabilitation_users_roles([usersHabilitations] $uh, [string[]]$app_rolenames , [boolean] $deleteFirst ){
+    return $uh.grant_users_roles($app_rolenames , $deleteFirst)
 }
 
-function deny-ScriptUser_Password([ScriptUser]$su){
-    return $su.denyPassword()
+Function grant-UsersHabilitation_users_profile([usersHabilitations] $uh, [string]$ProfileCode ){
+    return $uh.grant_users_profile($ProfileCode)
 }
 
-function update-ScriptUser_Store([ScriptUser]$su){
-    return $su.updateStore()
+function sync_user_disable_all($exception_user){
+    return [UsersHabilitation]::sync_user_disable_all($exception_user)
 }
+
+function add-UsersHabilitation([usersHabilitations] $uh, [int] $defaultProfilCode){
+    return $uh.add_users($defaultProfilCode)
+}
+
+
+
 
 
 #https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_classes 
 
 # Define the types to export with type accelerators.
-$script:ExportableTypes  =@(
-    [ScriptUser]
+$script:ExportableTypes = @(
+    [UsersHabilitation]
 )
 # Get the internal TypeAccelerators class to use its static methods.
-$script:TypeAcceleratorsClass = [psobject].Assembly.GetType(
-    'System.Management.Automation.TypeAccelerators'
-)
+$script:TypeAcceleratorsClass = [psobject].Assembly.GetType('System.Management.Automation.TypeAccelerators')
+
 # Ensure none of the types would clobber an existing type accelerator.
 # If a type accelerator with the same name exists, throw an exception.
 $script:ExistingTypeAccelerators = $script:TypeAcceleratorsClass::Get
 foreach ($Type in $script:ExportableTypes) {
     if ($Type.FullName -in $script:ExistingTypeAccelerators.Keys) {
-        $Message = @(
-            "Unable to register type accelerator '$($Type.FullName)'"
-            'Accelerator already exists.'
-        ) -join ' - '
+        $Message = "Unable to register type accelerator '$($Type.FullName)' - Accelerator already exists."
 
         throw [System.Management.Automation.ErrorRecord]::new(
             [System.InvalidOperationException]::new($Message),
@@ -225,7 +381,7 @@ foreach ($Type in $script:ExportableTypes) {
 }
 # Remove type accelerators when the module is removed.
 $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
-    foreach($Type in $script:ExportableTypes) {
+    foreach ($Type in $script:ExportableTypes) {
         $script:TypeAcceleratorsClass::Remove($Type.FullName)
     }
 }.GetNewClosure()
