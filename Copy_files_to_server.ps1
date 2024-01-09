@@ -14,6 +14,7 @@ $SOURCE_PATH = $RUNTIME_ROOT
 import-module "$RUNTIME_ROOT\Classes\Class_ScriptUser.psm1" -Force
 
 
+
 function copy-files-toremote( [array]$list_files, [string]$read_dir, [string]$write_dir, [System.Management.Automation.Runspaces.PSSession] $remote  ) {
     $it = 0
     ForEach ( $file in $list_files ) {
@@ -58,8 +59,18 @@ function copy-files-toLocal( [array]$list_files, [string]$read_dir, [string]$wri
 
 $user = New-Object ScriptUser ( $INI_USERNAME, $RUNTIME_ROOT, $true, $true )
 $cred = $user.getCredential()
-$remote = New-PSSession -ComputerName $INI_WRITE_COMPUTER -Credential $cred  # -UseSSL
-if ( $remote.State -eq 'Opened' ) {
+
+try {
+    $remote = New-PSSession -ComputerName $INI_WRITE_COMPUTER -Credential $cred  # -UseSSL
+}
+catch {
+    $ExceptionMsg = $_.Exception.InnerException
+    Write-Warning "Session could not be created to $INI_WRITE_COMPUTER."
+    Write-Error $ExceptionMsg
+    exit 1
+}
+
+if (  $remote.State -eq 'Opened' ) {
     $user.confirmPassword()
     $user.updateStore()
 }
@@ -83,5 +94,3 @@ switch ( $decision ) {
         Write-output "Cancel"
     }
 }
-
-
