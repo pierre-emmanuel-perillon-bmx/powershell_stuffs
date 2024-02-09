@@ -35,13 +35,13 @@ options:
 function Compose-TestEmail( [string]$recipient, [string]$attachmentfile ) {
     $currentDate = (Get-Date -Format "dddd yyyy/MM/dd HH:mm:ss K")
     $message = new-object Net.Mail.MailMessage;
-    $message.From = $config_smtp.username 
+    $message.From = $smtp.username 
     $message.To.Add($recipient);
     $message.Subject = "Test SMTP at {0}" -f $currentDate;
     $message.Body = $bodyTemplate -f $env:USERNAME, $env:COMPUTERNAME, $currentDate,$smtp.server,$smtp.port,$recipient,$smtp.username ;
 
     if ( [string]::IsNullOrEmpty($attachmentfile ) -or -not( Test-Path -Path $attachmentfile)  ){
-        Write-Output "No attachment to the email."
+        Write-Information "No attachment to the email."
     }
     else{
         $attachment = New-Object Net.Mail.Attachment($attachmentfile);
@@ -55,7 +55,7 @@ function Send-ToEmail([Net.Mail.MailMessage] $message){
     $client.EnableSSL = $smtp.port -eq 587  #25 or 587 are supported
     $client.Credentials = New-Object System.Net.NetworkCredential($smtp.username, $smtp.password );
     $client.send($message);
-    Write-Output "Mail Sent" ;
+    Write-Information "Mail Sent" ;
  }
 
 
