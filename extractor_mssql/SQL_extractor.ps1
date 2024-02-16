@@ -265,7 +265,7 @@ function main (){
     if  (action-or-skip $title){
         write-output 'Perform hash signature'
         $tmp = $INI_OUTPUT_SIGNATURE -f $INI_OUTPUT_PATH
-        Get-ChildItem $INI_OUTPUT_PATH| Get-FileHash > $tmp 
+        Get-ChildItem $INI_OUTPUT_PATH| Where-Object { $_.FullName -ne $tmp } | Get-FileHash > $tmp 
     }
 
     Write-Output "see you soon"
