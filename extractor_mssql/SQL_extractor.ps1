@@ -2,25 +2,25 @@ param(
     [switch] $dont_dump_base, #allow to not perform the main dump if set
     [switch] $dont_archive,   #files will be deleted if set
     [switch] $do_all,         #not used
-    [switch] $dont_sign       #signature file will be generated at the end of the process
+    [switch] $dont_sign            #signature file will be generated at the end of the process
 )
 
-
+$now = get-date  -Format 'yyyymmddhhmmss'
 $INI_ROOT = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
 $INI_DB_CONFIG_FILE        ='config.xml'
 $INI_OUTPUT_PATH           ='C:\dump\data'
-$INI_OUTPUT_INZIP          ='' #put a valide file name here to zip file while extracting. 
+$INI_OUTPUT_INZIP          ='app-{0}' -f $now  #put a valide file name here to zip file while extracting. 
 $INI_OUTPUT_SIGNATURE      ='{0}\signature.txt'
 $INI_OUTPUT_TABLE_SIZE     ='{0}\report_database_tables_size.csv'  
-$INI_OUTPUT_DUMP_RAW       ='{0}\application_{1}.csv'
+$INI_OUTPUT_DUMP_RAW       ='{0}\app_{1}.csv'
 $INI_OUTPUT_FLAG           ='{0}\refresh_on_going' -f $INI_OUTPUT_PATH
 
 $INI_COMPRESSION_LEVEL     ='Fastest'  # Fastest vs Optimal
 $INI_WAIT_SECOND           =2          # wait enough to let server breath
 $INI_TIMESTAMP_FORMAT      ='yyyyMMddHHmmss'
 
-$INI_QUERY_RELEVANT_TABLES ='query_ipmanager_some_tables.sql'
-$INI_QUERY_SELECT          ='query_select_start_cast.sql'
+$INI_QUERY_RELEVANT_TABLES ='query_ipmanager_all_tables.sql'
+$INI_QUERY_SELECT          ='query_select_start.sql'
 $INI_QUERY_TABLESIZE       ='query_about_tablesize.sql'
 
 $RUNTIME_CHOICE=@{
@@ -29,6 +29,7 @@ $RUNTIME_CHOICE=@{
     '_dump'                 =!$dont_dump_base
     '_signature'            =!$dont_sign 
     'About table size'      =$true
+    'morin'                 =$true
 }
 
 
@@ -40,7 +41,6 @@ function action-or-skip ([string] $query ){
         return $RUNTIME_CHOICE['_default']
     }
 }
-
 
 function archive-or-remove( [string]$path ){
     if ( Test-Path $path ) {
@@ -91,9 +91,8 @@ function establish-connexion(){
 }
 
 
-function execute-sqlselectquery1 ([System.Data.SqlClient.SqlConnection]$SqlConnection,[string] $SqlStatement, [hashtable]$sqlparameters, [string] $path ){
-    $ErrorActionPreference = "Stop"
-    
+function execute-sqlselectquery_toCSV ([System.Data.SqlClient.SqlConnection]$SqlConnection,[string] $SqlStatement, [hashtable]$sqlparameters, [string] $path ){
+    $ErrorActionPreference = "Stop"    
     archive-or-remove $path 
     $sqlCmd = New-Object System.Data.SqlClient.SqlCommand
     $sqlCmd.Connection = $sqlConnection
@@ -101,12 +100,12 @@ function execute-sqlselectquery1 ([System.Data.SqlClient.SqlConnection]$SqlConne
     foreach ($h in $sqlparameters.GetEnumerator()) {
         $SqlCmd.parameters.AddWithValue( "@"+$h.Name, $h.value) | out-null 
     }
-    $sqlAdapter = New-Object System.Data.SqlClient.SqlDataAdapter
-    $sqlAdapter.SelectCommand = $sqlCmd
-    $data = New-Object System.Data.DataSet
+    #Execute the Command
+    $Datatable = New-Object System.Data.DataTable
     try{
-        $sqlAdapter.Fill($data) 
-        $data.Tables[0] | ConvertTo-Csv  -NoTypeInformation | Out-File -FilePath "$path" -Encoding default
+        $dataReader = $SqlCmd.ExecuteReader()
+        $DataTable.Load($dataReader)
+        $DataTable | ConvertTo-Csv  -NoTypeInformation | Out-File -FilePath "$path" -Encoding default
     }
     catch{
         $Error = $_.Exception.Message
@@ -114,12 +113,13 @@ function execute-sqlselectquery1 ([System.Data.SqlClient.SqlConnection]$SqlConne
         Write-Error -Verbose "Error executing SQL on database [$Database] on server [$SqlServer]. Statement: `r`n$SqlStatement"
     }
     finally {
-       # $sqlAdapter.Dispose()
+       $dataReader.Close() 
+       $Datatable.Dispose()
     }
 }
 
 
-function execute-sqlselectquery2( [System.Data.SqlClient.SqlCommand]$SqlCmd, [string]$sqlText , [hashtable]$sqlparameters ){
+function execute-sqlselectquery_toArray( [System.Data.SqlClient.SqlCommand]$SqlCmd, [string]$sqlText , [hashtable]$sqlparameters ){
     foreach ($h in $sqlparameters.GetEnumerator()) {
         $SqlCmd.parameters.AddWithValue( "@"+$h.Name, $h.value) | out-null 
     }
@@ -127,28 +127,30 @@ function execute-sqlselectquery2( [System.Data.SqlClient.SqlCommand]$SqlCmd, [st
         $SqlCmd.CommandText = $sqlText
     }
 
-    $dataReader =  $SqlCmd.ExecuteReader()
-    $resulttype=$dataReader.GetType().Name
-    $result= @{}
+    $Datatable = New-Object System.Data.DataTable
+    try{
+        $dataReader = $SqlCmd.ExecuteReader()
+        $DataTable.Load($dataReader)
+        $result = New-Object System.Collections.Generic.List[PSObject]
+        foreach ($row in $DataTable.Rows) {
+            $obj = New-Object PSObject
 
-    if ( $resulttype -eq 'SqlDataReader' ) {
-        $columns_name = New-Object Collections.Generic.List[string]
-        $line=0
-        for($i=0;$i -lt $dataReader.VisibleFieldCount;$i++){
-            $columns_name.add($dataReader.GetName($i) ) | out-null 
-        }
-        while( $dataReader.Read() ){
-            $row = New-object psobject 
-            foreach($col in $columns_name){
-                add-member -InputObject $row -MemberType NoteProperty -Name $col -Value $dataReader[$col]|out-null 
+            foreach ($column in $DataTable.Columns) {
+                $obj | Add-Member -MemberType NoteProperty -Name $column.ColumnName -Value $row[$column]
             }
-            $result.add($line,$row)|out-null
-            $line++
-        }#while
-    }else{
-        Write-Error -Category InvalidType 'looks like a bug, sorry'
+
+            $result.add($obj)
+        }
     }
-    $dataReader.close() 
+    catch{
+        $Error = $_.Exception.Message
+        Write-Error $Error
+        Write-Error -Verbose "Error executing SQL on database [$Database] on server [$SqlServer]. Statement: `r`n$SqlStatement"
+    }
+    finally {
+       $dataReader.Close() 
+       $Datatable.Dispose()
+    }
     return $result
 }
 
@@ -171,7 +173,7 @@ function perform-onequery-report([System.Data.SqlClient.SqlConnection]$SqlConnec
     Write-Output $title 
     Write-Output "   ->$path"
     try {
-        execute-sqlselectquery1 $SqlConnection $sql $param $path 
+        execute-sqlselectquery_toCSV $SqlConnection $sql $param $path 
     }catch {
         $Error = $_.Exception.Message
         Write-Error $Error
@@ -180,13 +182,12 @@ function perform-onequery-report([System.Data.SqlClient.SqlConnection]$SqlConnec
 
 
 function dump_database([System.Data.SqlClient.SqlConnection]$SqlConnection, $sql_script,[string] $zipname = '' ) {
+
     $SqlCmd = New-Object System.Data.SqlClient.SqlCommand
     $SqlCmd.Connection = $SqlConnection
-
     $sql = read-file $sql_script
     $sqlTemplate = read-file $INI_QUERY_SELECT
-
-    $intermediate = execute-sqlselectquery2 $SqlCmd $sql @{}
+    $intermediate = execute-sqlselectquery_toArray $SqlCmd $sql @{}
 
     Write-Output "Found $($intermediate.count) items"
     if ( [string]::IsNullOrEmpty($zipname) ){
@@ -199,20 +200,22 @@ function dump_database([System.Data.SqlClient.SqlConnection]$SqlConnection, $sql
         $do_zip=$true
         archive-or-remove $zip_fqln 
     }
-
-    $intermediate.GetEnumerator() | ForEach-Object {
-        $active_table = $_.value
+    foreach ( $active_table in $intermediate.GetEnumerator() )  {
         $title="Dumping table {0} " -f $active_table.express
         $sql = $sqlTemplate -f $active_table.express
+        Write-Output $sql 
         $tmp = $active_table.DatabaseName+'-'+$active_table.SchemaName+'-'+$active_table.TableName
         $path = $INI_OUTPUT_DUMP_RAW -f $INI_OUTPUT_PATH,$tmp 
         Write-Output $title 
-        execute-sqlselectquery1 $SqlConnection $sql @{} $path
 
-        #manage zip file immediatily
-        if ( $do_zip ) {
-            move-tozip  $path $zip_fqln 
+        $executionTime = Measure-Command {
+            execute-sqlselectquery_toCSV $SqlConnection $sql @{} $path
+            #manage zip file immediatily
+            if ( $do_zip ) {
+                move-tozip  $path $zip_fqln 
+            }
         }
+        Write-Output "Execution time: $($executionTime.TotalMilliseconds) seconds"
         Start-Sleep -s $INI_WAIT_SECOND 
     }
 }
@@ -244,13 +247,13 @@ function main (){
     }
     
     ##add custom query here as "About table size" 
-    #$title="title"
-    #if  (action-or-skip $title){
-    #    $path = '{0}\report....csv' -f $INI_OUTPUT_PATH
-    #    $param = @{}
-    #    $sql = read-file 'query....sql'
-    #    perform-onequery-report $SqlConnection $title $sql $param $path 
-    #}
+    $title="morin"
+    if  (action-or-skip $title){
+        $path = '{0}\report_morin.csv' -f $INI_OUTPUT_PATH
+        $param = @{}
+        $sql = read-file 'query_morin.sql'
+        perform-onequery-report $SqlConnection $title $sql $param $path 
+    }
 
     $title = '_dump'
     if  (action-or-skip $title){
@@ -265,7 +268,9 @@ function main (){
     if  (action-or-skip $title){
         write-output 'Perform hash signature'
         $tmp = $INI_OUTPUT_SIGNATURE -f $INI_OUTPUT_PATH
-        Get-ChildItem $INI_OUTPUT_PATH| Get-FileHash > $tmp 
+        Get-ChildItem $INI_OUTPUT_PATH |
+             Where-Object { $_.FullName -ne $tmp } | 
+                Get-FileHash > $tmp 
     }
 
     Write-Output "see you soon"
@@ -273,5 +278,4 @@ function main (){
 
 
 main
-
 exit 0 
