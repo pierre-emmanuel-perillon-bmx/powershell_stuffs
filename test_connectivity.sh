@@ -113,9 +113,9 @@ test_connectivity() {
     elif [ "$protocol" == "UDP" ]; then
         timeout $TIMEOUT_DURATION bash -c "echo > /dev/udp/$server/$port" 2>/dev/null
     elif [ "$protocol" == "HTTP" ]; then
-         wget_wrapper 'http' $server $port
+         wget_wrapper 'http' $server $port  | tee -a $LOGFILE
     elif [ "$protocol" == "HTTPS" ]; then
-         wget_wrapper 'https' $server $port
+         wget_wrapper 'https' $server $port | tee -a $LOGFILE
     else
         timeout $TIMEOUT_DURATION bash -c "echo > /dev/tcp/$server/$port" 2>/dev/null
     fi
